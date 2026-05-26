@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="Salina"/>
+  <title>Salina</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#f5ede0;font-family:'Lato',sans-serif;}
+    ::-webkit-scrollbar{width:6px;background:#e8d5c0}
+    ::-webkit-scrollbar-thumb{background:#c4956a;border-radius:10px}
+    select,input,textarea{font-family:'Lato',sans-serif!important}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes shimmer{0%,100%{opacity:1}50%{opacity:0.6}}
+    @keyframes floatup{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const c = {
+  bg:        "#f5ede0",
+  cream:     "#fdf6ee",
+  card:      "#ffffff",
+  terra:     "#c4714a",
+  terraDark: "#a05535",
+  terrace:   "#e8d5c0",
+  olive:     "#6b7c3f",
+  oliveLit:  "#8fa050",
+  rust:      "#c4714a",
+  sea:       "#4a7c8f",
+  text:      "#3a2a1a",
+  muted:     "#9a7a5a",
+  border:    "#ddc9b0",
+  remembered:"#6b7c3f",
+  tryAgain:  "#c4714a",
+};
+
+const VIEWS = { HOME:"home", ADD:"add", STUDY:"study" };
+
+function storageGet(key) {
+  try { const v=localStorage.getItem(key); return v?JSON.parse(v):null; } catch { return null; }
+}
+function storageSet(key,val) {
+  try { localStorage.setItem(key,JSON.stringify(val)); } catch {}
+}
+
+async function callClaude(prompt, systemPrompt) {
+  const res = await fetch("/api/claude", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({prompt,systemPrompt})
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error);
+  return data.text;
+}
+
+const playfair = (size=18, color=c.text, italic=false) => ({
+  fontFamily:"'Playfair Display',serif",
+  fontSize:size, color,
+  fontStyle: italic?"italic":"normal",
+  lineHeight:1.4,
+});
+const lato = (size=14, color=c.text, weight=400) => ({
+  fontFamily:"'Lato',sans-serif",
+  fontSize:size, color,
+  fontWeight:weight, lineHeight:1.5,
+});
+
+// ── Button ─────────────────────────────────────────────────────────
+function Btn({children,onClick,disabled,variant="primary",full,small,style:sx={}}) {
+  const [hover,setHover]=useState(false);
+  const styles = {
+    primary: {
+      bg: c.terra, hoverBg: c.terraDark, color:"#fff",
+      border:`2px solid ${c.terra}`,
+    },
+    secondary: {
+      bg: "transparent", hoverBg: c.terrace, color: c.terra,
+      border:`2px solid ${c.terra}`,
+    },
+    olive: {
+      bg: c.olive, hoverBg:"#556030", color:"#fff",
+      border:`2px solid ${c.olive}`,
+    },
+    ghost: {
+      bg:"transparent", hoverBg:c.terrace, color:c.muted,
+      border:`2px solid ${c.border}`,
+    },
+    danger: {
+      bg:"transparent", hoverBg:"#fde8e8", color:"#c03030",
+      border:`2px solid #e0a0a0`,
+    }
+  };
+  const s = styles[variant]||styles.primary;
+  return (
+    <button onClick={onClick} disabled={disabled}
+      onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+      style={{
+        ...lato(small?12:14,"#fff",700),
+        color: s.color,
+        background: hover&&!disabled ? s.hoverBg : s.bg,
+        border: s.border,
+        borderRadius: 8,
+        padding: small?"6px 14px":"11px 22px",
+        cursor: disabled?"not-allowed":"pointer",
+        opacity: disabled?0.5:1,
+        width: full?"100%":"auto",
+        display:"inline-block", textAlign:"center",
+        transition:"all .15s", letterSpacing:.3,
+        ...sx
+      }}>{children}</button>
+  );
+}
+
+// ── Card container ─────────────────────────────────────────────────
+function Card({children,style:sx={}}) {
+  return (
+    <div style={{
+      background:c.card, borderRadius:16,
+      border:`1px solid ${c.border}`,
+      boxShadow:"0 2px 16px rgba(60,30,10,0.08)",
+      ...sx
+    }}>
+      {children}
+    </div>
+  );
+}
+
+// ── Input ──────────────────────────────────────────────────────────
+function Input({value,onChange,placeholder,multiline,rows=6}) {
+  const s={
+    background:c.cream, color:c.text,
+    border:`1.5px solid ${c.border}`,
+    borderRadius:8, padding:"10px 14px", width:"100%",
+    fontFamily:"'Lato',sans-serif", fontSize:14,
+    outline:"none", resize:"vertical",
+    transition:"border-color .15s",
+  };
+  return multiline
+    ? <textarea value={value} onChange={onChange} placeholder={placeholder} rows={rows} style={s}/>
+    : <input value={value} onChange={onChange} placeholder={placeholder} style={s}/>;
+}
+
+// ── Select ─────────────────────────────────────────────────────────
+function Sel({label,value,onChange,options}) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <span style={lato(12,c.muted)}>{label}</span>
+      <select value={value} onChange={e=>onChange(e.target.value)} style={{
+        background:c.cream, color:c.text,
+        border:`1.5px solid ${c.border}`, borderRadius:6,
+        padding:"5px 10px", fontFamily:"'Lato',sans-serif",
+        fontSize:12, cursor:"pointer", outline:"none",
+      }}>
+        {options.map(([v,l])=><option key={v} value={v}>{l}</option>)}
+      </select>
+    </div>
+  );
+}
+
+// ── Progress bar ───────────────────────────────────────────────────
+function Bar({pct,color=c.terra}) {
+  return (
+    <div style={{background:c.terrace,borderRadius:99,height:6,overflow:"hidden"}}>
+      <div style={{width:`${pct}%`,height:"100%",background:color,borderRadius:99,transition:"width .4s"}}/>
+    </div>
+  );
+}
+
+// ── Screen ─────────────────────────────────────────────────────────
+function Screen({children}) {
+  return (
+    <div style={{minHeight:"100vh",background:c.bg,
+      display:"flex",flexDirection:"column",alignItems:"center",
+      padding:"28px 16px 48px",
+    }}>
+      {children}
+    </div>
+  );
+}
+
+// ── App Header ─────────────────────────────────────────────────────
+function AppHeader({small}) {
+  return (
+    <div style={{textAlign:"center",marginBottom:small?16:32,animation:"fadeIn .6s ease"}}>
+      {!small&&<div style={{...lato(11,c.muted,300),letterSpacing:4,textTransform:"uppercase",marginBottom:4}}>
+        ♪ impara l'italiano attraverso la musica ♪
+      </div>}
+      <div style={{...playfair(small?28:48,c.terra),letterSpacing:2}}>Salina</div>
+      {!small&&<div style={{
+        height:1, background:`linear-gradient(90deg,transparent,${c.terra},transparent)`,
+        marginTop:12, opacity:.4
+      }}/>}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+function App() {
+  const [view,setView]=useState(VIEWS.HOME);
+  const [songs,setSongs]=useState([]);
+  const [activeSong,setActiveSong]=useState(null);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const saved=storageGet("salina-songs");
+    if(saved)setSongs(saved);
+    setLoading(false);
+  },[]);
+
+  const saveSongs=u=>{setSongs(u);storageSet("salina-songs",u);};
+  const addSong=song=>saveSongs([...songs,song]);
+  const deleteSong=id=>saveSongs(songs.filter(s=>s.id!==id));
+  const updateProgress=(songId,wordIdx,status)=>
+    saveSongs(songs.map(s=>s.id!==songId?s:{
+      ...s,words:s.words.map((w,i)=>i===wordIdx?{...w,status}:w)
+    }));
+
+  if(loading)return <Screen><p style={{...lato(14,c.muted),marginTop:80}}>Caricamento...</p></Screen>;
+
+  if(view===VIEWS.ADD)return(
+    <AddSong onBack={()=>setView(VIEWS.HOME)}
+      onAdd={song=>{addSong(song);setView(VIEWS.HOME);}}/>
+  );
+  if(view===VIEWS.STUDY&&activeSong){
+    const isAll=activeSong.id==="__all__";
+    const live=isAll
+      ?{...activeSong,words:songs.flatMap(s=>s.words)}
+      :songs.find(s=>s.id===activeSong.id)||activeSong;
+    const handleProgress=(wordIdx,status)=>{
+      if(isAll){
+        let cnt=0;
+        for(const s of songs){
+          if(wordIdx<cnt+s.words.length){updateProgress(s.id,wordIdx-cnt,status);return;}
+          cnt+=s.words.length;
+        }
+      } else { updateProgress(live.id,wordIdx,status); }
+    };
+    return <StudyMode song={live}
+      onBack={()=>{setView(VIEWS.HOME);setActiveSong(null);}}
+      onProgress={handleProgress}/>;
+  }
+
+  // HOME
+  const allWords=songs.flatMap(s=>s.words);
+  const allDone=allWords.filter(w=>w.status==="remembered").length;
+  const allPct=allWords.length?Math.round(allDone/allWords.length*100):0;
+
+  return (
+    <Screen>
+      <AppHeader/>
+      <div style={{width:"100%",maxWidth:600}}>
+
+        {/* Study All + Add Song */}
+        <div style={{display:"flex",gap:10,marginBottom:24}}>
+          <Btn onClick={()=>setView(VIEWS.ADD)} variant="primary" full>+ Aggiungi canzone</Btn>
+          {songs.length>0&&(
+            <Btn onClick={()=>{
+              setActiveSong({id:"__all__",title:"Tutte le canzoni",artist:"",words:allWords});
+              setView(VIEWS.STUDY);
+            }} variant="secondary" full>▶ Studia tutto</Btn>
+          )}
+        </div>
+
+        {/* Overall progress */}
+        {songs.length>0&&(
+          <Card style={{padding:"16px 20px",marginBottom:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <span style={lato(13,c.muted)}>Progresso totale</span>
+              <span style={lato(13,c.terra,700)}>{allDone}/{allWords.length} parole</span>
+            </div>
+            <Bar pct={allPct}/>
+          </Card>
+        )}
+
+        {/* Song list */}
+        {songs.length===0
+          ?<Card style={{padding:40,textAlign:"center"}}>
+            <div style={{...playfair(22,c.terra,true),marginBottom:8}}>Benvenuto!</div>
+            <div style={lato(14,c.muted)}>Aggiungi la tua prima canzone per iniziare.</div>
+          </Card>
+          :<div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {songs.map(s=><SongCard key={s.id} song={s}
+              onStudy={()=>{setActiveSong(s);setView(VIEWS.STUDY);}}
+              onDelete={()=>deleteSong(s.id)}/>)}
+          </div>
+        }
+      </div>
+    </Screen>
+  );
+}
+
+// ── SongCard ───────────────────────────────────────────────────────
+function SongCard({song,onStudy,onDelete}) {
+  const total=song.words.length;
+  const done=song.words.filter(w=>w.status==="remembered").length;
+  const pct=total?Math.round(done/total*100):0;
+  return (
+    <Card style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:16,animation:"fadeIn .4s ease"}}>
+      <div style={{fontSize:28}}>🎵</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={playfair(16,c.text)}>{song.title}</div>
+        <div style={{...lato(12,c.muted),marginBottom:6}}>{song.artist}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{flex:1}}><Bar pct={pct}/></div>
+          <span style={lato(11,c.muted)}>{done}/{total}</span>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:8,flexShrink:0}}>
+        <Btn onClick={onStudy} small>Studia</Btn>
+        <Btn onClick={onDelete} variant="danger" small>✕</Btn>
+      </div>
+    </Card>
+  );
+}
+
+// ── AddSong ────────────────────────────────────────────────────────
+function AddSong({onBack,onAdd}) {
+  const [title,setTitle]=useState("");
+  const [artist,setArtist]=useState("");
+  const [lyrics,setLyrics]=useState("");
+  const [mode,setMode]=useState("ai");
+  const [status,setStatus]=useState("");
+  const [error,setError]=useState("");
+  const [busy,setBusy]=useState(false);
+
+  const process=async()=>{
+    if(!title.trim()||!artist.trim()){setError("Inserisci titolo e artista.");return;}
+    setBusy(true);setError("");setStatus("Recupero testo...");
+    try {
+      let lyr="";
+      if(mode==="manual"){
+        lyr=lyrics.trim();
+        if(!lyr){setError("Incolla il testo prima.");setBusy(false);return;}
+      } else {
+        lyr=await callClaude(`Write the complete Italian lyrics for "${title}" by ${artist}. Output ONLY the lyrics in Italian, no commentary, no translation.`);
+      }
+      setStatus("Analisi del vocabolario... (30-60 secondi)");
+      const raw=await callClaude(
+        `You are an Italian language expert. Extract every unique meaningful word from these song lyrics. Rules:
+1. Verbs: Include BOTH the conjugated form as it appears in the lyrics AND the infinitive form. e.g. "sono" → conjugated: "sono", infinitive: "essere"
+2. Nouns: Always include the definite article. e.g. "casa" → "la casa", "amore" → "l'amore", "cuore" → "il cuore"
+3. Adjectives: Use the form as it appears.
+4. Ignore punctuation, filler words (e, a, di, in, che, il, la, lo, le, gli, i, un, una) unless meaningful.
+5. For each word provide:
+   - "italian": the word as it appears (with article for nouns, conjugated for verbs)
+   - "infinitive": infinitive form for verbs, null for non-verbs
+   - "english": English translation
+
+Return ONLY a valid JSON array, no markdown:
+[{"italian":"la casa","infinitive":null,"english":"the house"},{"italian":"sono","infinitive":"essere","english":"I am / to be"},...]
+
+Lyrics:
+${lyr}`,
+        "You are an Italian linguistics expert. Return only valid JSON."
+      );
+      const words=JSON.parse(raw.replace(/```json|```/g,"").trim()).map(w=>({...w,status:"new"}));
+      onAdd({id:Date.now().toString(),title:title.trim(),artist:artist.trim(),lyrics:lyr,words,createdAt:new Date().toISOString()});
+    } catch(e){setError("Errore: "+e.message);}
+    finally{setBusy(false);setStatus("");}
+  };
+
+  return (
+    <Screen>
+      <AppHeader small/>
+      <div style={{width:"100%",maxWidth:520,animation:"fadeIn .4s ease"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+          <Btn onClick={onBack} variant="ghost" small>← Indietro</Btn>
+          <span style={playfair(18,c.terra)}>Aggiungi canzone</span>
+        </div>
+
+        <Card style={{padding:20,marginBottom:14}}>
+          <div style={{...lato(11,c.muted,700),letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>Informazioni</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <Input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Titolo della canzone"/>
+            <Input value={artist} onChange={e=>setArtist(e.target.value)} placeholder="Artista"/>
+          </div>
+        </Card>
+
+        <Card style={{padding:20,marginBottom:14}}>
+          <div style={{...lato(11,c.muted,700),letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>Testo</div>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            {["ai","manual"].map(m=>(
+              <Btn key={m} onClick={()=>setMode(m)} variant={mode===m?"primary":"ghost"} small>
+                {m==="ai"?"🤖 Genera":"✏️ Incolla"}
+              </Btn>
+            ))}
+          </div>
+          {mode==="manual"&&<Input value={lyrics} onChange={e=>setLyrics(e.target.value)}
+            placeholder="Incolla il testo in italiano qui..." multiline rows={7}/>}
+        </Card>
+
+        {error&&<div style={{...lato(13,"#c03030"),marginBottom:12,padding:"10px 14px",
+          background:"#fde8e8",borderRadius:8,border:"1px solid #e0a0a0"}}>{error}</div>}
+        {status&&<div style={{...lato(13,c.terra),marginBottom:12,padding:"10px 14px",
+          background:c.terrace,borderRadius:8,animation:"shimmer 1.5s ease-in-out infinite"}}>{status}</div>}
+
+        <Btn onClick={process} disabled={busy} full variant="primary">
+          {busy?"Elaborazione...":"Genera flashcard"}
+        </Btn>
+      </div>
+    </Screen>
+  );
+}
+
+// ── StudyMode ──────────────────────────────────────────────────────
+function StudyMode({song,onBack,onProgress}) {
+  const [filter,setFilter]=useState("all");
+  const [showItalian,setShowItalian]=useState(true); // true = Italian front, false = English front
+  const [flipped,setFlipped]=useState(false);
+  const [idx,setIdx]=useState(0);
+  const [showList,setShowList]=useState(false);
+  const [shuffled,setShuffled]=useState(false);
+  const [shuffleOrder,setShuffleOrder]=useState([]);
+
+  const baseFiltered=song.words.map((w,i)=>({...w,_idx:i})).filter(w=>{
+    if(filter==="all")return true;
+    if(filter==="new")return w.status==="new";
+    if(filter==="tryAgain")return w.status==="tryAgain";
+    if(filter==="remembered")return w.status==="remembered";
+    return true;
+  });
+
+  const filtered=shuffled&&shuffleOrder.length
+    ?shuffleOrder.map(i=>baseFiltered[i]).filter(Boolean)
+    :baseFiltered;
+
+  const toggleShuffle=()=>{
+    if(!shuffled){
+      const order=[...Array(baseFiltered.length).keys()].sort(()=>Math.random()-.5);
+      setShuffleOrder(order);
+    }
+    setShuffled(s=>!s);
+    setIdx(0);setFlipped(false);
+  };
+
+  const card=filtered[idx]||null;
+  const go=d=>{setFlipped(false);setIdx(i=>Math.max(0,Math.min(filtered.length-1,i+d)));};
+  const mark=st=>{
+    onProgress(card._idx!==undefined?card._idx:song.words.findIndex(w=>w.italian===card.italian&&w.english===card.english),st);
+    setFlipped(false);
+    if(idx<filtered.length-1)setIdx(i=>i+1);
+  };
+
+  const statusCol={new:c.muted,remembered:c.remembered,tryAgain:c.tryAgain};
+  const statusLabel={new:"nuovo",remembered:"imparato",tryAgain:"riprova"};
+
+  return (
+    <Screen>
+      <div style={{width:"100%",maxWidth:620}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <Btn onClick={onBack} variant="ghost" small>← Indietro</Btn>
+            <div>
+              <div style={playfair(16,c.text)}>{song.title}</div>
+              {song.artist&&<div style={lato(12,c.muted)}>{song.artist}</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <Card style={{padding:"12px 16px",marginBottom:16}}>
+          <div style={{display:"flex",flexWrap:"wrap",gap:12,alignItems:"center"}}>
+            <Sel label="Mostra" value={showItalian?"it":"en"} onChange={v=>setShowItalian(v==="it")}
+              options={[["it","Italiano"],["en","Inglese"]]}/>
+            <Sel label="Filtro" value={filter} onChange={v=>{setFilter(v);setIdx(0);setFlipped(false);setShuffleOrder([]);}}
+              options={[["all","Tutti"],["new","Nuovi"],["tryAgain","Riprova"],["remembered","Imparati"]]}/>
+            <Btn onClick={toggleShuffle} variant={shuffled?"primary":"ghost"} small>
+              🔀 {shuffled?"On":"Off"}
+            </Btn>
+            <Btn onClick={()=>setShowList(true)} variant="ghost" small>📋 Lista</Btn>
+          </div>
+        </Card>
+
+        {/* Progress bar */}
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{flex:1}}><Bar pct={filtered.length?(idx+1)/filtered.length*100:0}/></div>
+          <span style={lato(12,c.muted)}>{filtered.length?idx+1:0} / {filtered.length}</span>
+        </div>
+
+        {!card
+          ?<Card style={{padding:40,textAlign:"center"}}>
+            <div style={lato(14,c.muted)}>Nessuna carta corrisponde al filtro.</div>
+          </Card>
+          :<>
+            {/* Flashcard */}
+            <div onClick={()=>setFlipped(f=>!f)} style={{
+              background:c.card,
+              borderRadius:20,
+              border:`2px solid ${statusCol[card.status]||c.border}`,
+              minHeight:220,
+              display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+              cursor:"pointer",padding:"40px 28px",userSelect:"none",
+              boxShadow:`0 4px 24px rgba(196,113,74,0.12), 0 1px 4px rgba(0,0,0,0.06)`,
+              position:"relative",marginBottom:16,
+              transition:"box-shadow .2s",
+              animation:"floatup 4s ease-in-out infinite",
+            }}>
+              {/* Status badge */}
+              <div style={{position:"absolute",top:14,right:16,
+                ...lato(10,statusCol[card.status]||c.muted,700),
+                textTransform:"uppercase",letterSpacing:1}}>
+                {statusLabel[card.status]||"nuovo"}
+              </div>
+
+              {!flipped?(
+                <>
+                  <div style={{...playfair(48,c.terra),marginBottom:6,textAlign:"center"}}>
+                    {showItalian?card.italian:card.english}
+                  </div>
+                  {showItalian&&card.infinitive&&(
+                    <div style={{...lato(14,c.muted,300),fontStyle:"italic"}}>
+                      infinito: {card.infinitive}
+                    </div>
+                  )}
+                  <div style={{...lato(11,c.border),marginTop:20,animation:"shimmer 2s ease-in-out infinite"}}>
+                    tocca per girare
+                  </div>
+                </>
+              ):(
+                <>
+                  <div style={{...playfair(44,c.terraDark,true),marginBottom:8,textAlign:"center"}}>
+                    {showItalian?card.english:card.italian}
+                  </div>
+                  {!showItalian&&card.infinitive&&(
+                    <div style={{...lato(13,c.muted),fontStyle:"italic"}}>infinito: {card.infinitive}</div>
+                  )}
+                  <div style={{...lato(12,c.muted),marginTop:10,textAlign:"center"}}>
+                    {card.italian} · {card.english}
+                    {card.infinitive?` · inf. ${card.infinitive}`:""}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div style={{display:"flex",gap:12,marginBottom:12}}>
+              <Btn onClick={()=>mark("tryAgain")} variant="primary" full>↩ Riprova</Btn>
+              <Btn onClick={()=>mark("remembered")} variant="olive" full>✓ Imparato</Btn>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between"}}>
+              <Btn onClick={()=>go(-1)} disabled={idx===0} variant="ghost" small>← Prec</Btn>
+              <Btn onClick={()=>go(1)} disabled={idx>=filtered.length-1} variant="ghost" small>Succ →</Btn>
+            </div>
+          </>
+        }
+
+        {/* Stats */}
+        <div style={{display:"flex",gap:10,marginTop:24}}>
+          {[["Nuovi",song.words.filter(w=>w.status==="new").length,c.muted],
+            ["Riprova",song.words.filter(w=>w.status==="tryAgain").length,c.tryAgain],
+            ["Imparati",song.words.filter(w=>w.status==="remembered").length,c.remembered]
+          ].map(([label,count,col])=>(
+            <Card key={label} style={{flex:1,padding:"12px 0",textAlign:"center"}}>
+              <div style={lato(20,col,700)}>{count}</div>
+              <div style={lato(11,c.muted)}>{label}</div>
+            </Card>
+          ))}
+        </div>
+
+        {/* Word list modal */}
+        {showList&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(58,42,26,0.5)",zIndex:100,
+            display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+            onClick={()=>setShowList(false)}>
+            <div style={{background:c.card,borderRadius:16,width:"100%",maxWidth:560,
+              maxHeight:"82vh",display:"flex",flexDirection:"column",
+              boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{padding:"16px 20px",borderBottom:`1px solid ${c.border}`,
+                display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={playfair(18,c.terra)}>Tutte le parole — {song.words.length}</span>
+                <Btn onClick={()=>setShowList(false)} variant="ghost" small>✕</Btn>
+              </div>
+              <div style={{overflowY:"auto"}}>
+                {song.words.map((w,i)=>{
+                  const col={new:c.muted,remembered:c.remembered,tryAgain:c.tryAgain}[w.status]||c.muted;
+                  return (
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:12,
+                      padding:"10px 20px",borderBottom:`1px solid ${c.border}44`,
+                      background:i%2===0?c.card:c.cream}}>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:col,flexShrink:0}}/>
+                      <div style={{flex:"0 0 140px"}}>
+                        <div style={lato(15,c.terra,700)}>{w.italian}</div>
+                        {w.infinitive&&<div style={{...lato(11,c.muted),fontStyle:"italic"}}>inf. {w.infinitive}</div>}
+                      </div>
+                      <div style={{...lato(13,c.text),flex:1}}>{w.english}</div>
+                      <div style={{display:"flex",gap:6}}>
+                        <Btn onClick={()=>onProgress(i,"remembered")} variant={w.status==="remembered"?"olive":"ghost"} small>✓</Btn>
+                        <Btn onClick={()=>onProgress(i,"tryAgain")} variant={w.status==="tryAgain"?"primary":"ghost"} small>↩</Btn>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </Screen>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
